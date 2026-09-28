@@ -10358,3 +10358,58 @@ mod tests {
         );
     }
 }
+
+    // ────────────────────────────────────────────────────────────────────────────
+    // Issue #515: Period Cloning Validation
+    // ────────────────────────────────────────────────────────────────────────────
+
+    /// Validate that a period is suitable for cloning/templating.
+    /// 
+    /// Checks:
+    /// - Period configuration is not frozen
+    /// - Settlement window exists
+    /// 
+    /// Returns Ok(()) if valid, panics with actionable message otherwise.
+    /// Privacy-safe: does not expose salary amounts or employee data.
+    pub fn validate_period_for_cloning(e: Env, period: Symbol) -> Result<(), ()> {
+        Self::validate_symbol_not_empty(&e, &period, "period");
+        
+        // Check if period is frozen
+        if Self::is_period_config_frozen(e.clone(), period.clone()) {
+            panic!("Source period is frozen and cannot be used as a template");
+        }
+        
+        // Verify settlement window exists
+        if !e.storage()
+            .persistent()
+            .has(&DataKey::SettlementWindow(period.clone()))
+        {
+            panic!("Source period has no settlement window configured");
+        }
+        
+        Ok(())
+    }
+
+    // ────────────────────────────────────────────────────────────────────────────
+    // Issue #512: Draft Checksum Verification Enhancement  
+    // ────────────────────────────────────────────────────────────────────────────
+    
+    /// Verify draft checksum matches between preparation and finalization.
+    /// 
+    /// This prevents tampering with draft data after review but before execution.
+    /// The draft_hash is computed at prepare time and stored in PendingPayrollRun.
+    /// 
+    /// Privacy-safe: uses cryptographic hash, doesn't expose salary data.
+    pub fn verify_draft_checksum(e: &Env, run_id: u64, provided_hash: BytesN<32>) -> Result<(), ()> {
+        let pending_run: PendingPayrollRun = e
+            .storage()
+            .persistent()
+            .get(&DataKey::PendingRun(run_id))
+            .expect("Pending run not found");
+            
+        if pending_run.draft_hash != provided_hash {
+            panic!("Draft checksum mismatch: payroll data was modified after review");
+        }
+        
+        Ok(())
+    }
